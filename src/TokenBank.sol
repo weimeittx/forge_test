@@ -34,16 +34,13 @@ interface IPermit2 {
 
 /**
  * @title TokenBank
- * @dev ERC20 token bank contract with deposit and withdrawal functions
+ * @dev ERC20 token bank contract with deposit and withdrawal functions, supports all ERC20 tokens
  */
 contract TokenBank is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     
     // Canonical Permit2 contract address
     address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
-    
-    // Supported token addresses
-    mapping(address => bool) public supportedTokens;
     
     // User balances: user address => token address => balance
     mapping(address => mapping(address => uint256)) public balances;
@@ -54,39 +51,10 @@ contract TokenBank is Ownable, ReentrancyGuard {
     // User withdrawal event
     event Withdraw(address indexed user, address indexed token, uint256 amount);
     
-    // Token added event
-    event TokenAdded(address indexed token);
-    
-    // Token removed event
-    event TokenRemoved(address indexed token);
-    
     /**
      * @dev Constructor
      */
     constructor() Ownable(msg.sender) {}
-    
-    /**
-     * @dev Add supported token
-     * @param token Token contract address
-     */
-    function addSupportedToken(address token) external onlyOwner {
-        require(token != address(0), "Zero address not allowed");
-        require(!supportedTokens[token], "Token already supported");
-        
-        supportedTokens[token] = true;
-        emit TokenAdded(token);
-    }
-    
-    /**
-     * @dev Remove supported token
-     * @param token Token contract address
-     */
-    function removeSupportedToken(address token) external onlyOwner {
-        require(supportedTokens[token], "Token not supported");
-        
-        supportedTokens[token] = false;
-        emit TokenRemoved(token);
-    }
     
     /**
      * @dev Deposit function
@@ -94,7 +62,7 @@ contract TokenBank is Ownable, ReentrancyGuard {
      * @param amount Deposit amount
      */
     function deposit(address token, uint256 amount) external nonReentrant {
-        require(supportedTokens[token], "Token not supported");
+        require(token != address(0), "Zero address not allowed");
         require(amount > 0, "Amount must be greater than 0");
         
         // Transfer tokens to contract
@@ -121,7 +89,7 @@ contract TokenBank is Ownable, ReentrancyGuard {
         uint256 deadline,
         bytes calldata signature
     ) external nonReentrant {
-        require(supportedTokens[token], "Token not supported");
+        require(token != address(0), "Zero address not allowed");
         require(amount > 0, "Amount must be greater than 0");
         
         // Create the permit data structure
@@ -160,6 +128,7 @@ contract TokenBank is Ownable, ReentrancyGuard {
      * @param amount Withdrawal amount
      */
     function withdraw(address token, uint256 amount) external nonReentrant {
+        require(token != address(0), "Zero address not allowed");
         require(amount > 0, "Amount must be greater than 0");
         require(balances[msg.sender][token] >= amount, "Insufficient balance");
         
@@ -189,6 +158,7 @@ contract TokenBank is Ownable, ReentrancyGuard {
      * @param to Recipient address
      */
     function emergencyWithdraw(address token, uint256 amount, address to) external onlyOwner {
+        require(token != address(0), "Zero address not allowed");
         require(to != address(0), "Recipient cannot be zero address");
         
         // Check contract balance
