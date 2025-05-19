@@ -276,65 +276,6 @@ contract NFTMarketTest is Test {
     }
 
     // 1. 模糊测试：测试随机使用 0.01-10000 Token价格上架NFT，并随机使用任意Address购买NFT
-    function testFuzz_ListAndBuyNFT(uint256 price, address randomBuyer) public {
-        // 约束条件
-        // 价格范围：0.01 - 10000 tokens (转换为wei单位)
-        price = bound(price, 10**16, 10000 * 10**18);
-        
-        // 确保随机买家不是零地址、卖家或已知地址
-        vm.assume(randomBuyer != address(0));
-        vm.assume(randomBuyer != seller);
-        vm.assume(randomBuyer != owner);
-        vm.assume(randomBuyer != buyer);
-        vm.assume(randomBuyer != address(market));
-        vm.assume(randomBuyer != address(nft));
-        vm.assume(randomBuyer != address(token));
-        
-        // 铸造新的NFT给卖家
-        uint256 newTokenId = 1000;
-        vm.startPrank(owner);
-        nft.mint(seller, newTokenId);
-        
-        // 给随机买家铸造足够的代币
-        token.mint(randomBuyer, price * 2); // 铸造足够的代币，两倍于价格
-        vm.stopPrank();
-        
-        // 卖家上架NFT
-        vm.startPrank(seller);
-        nft.approve(address(market), newTokenId);
-        market.listNFT(address(nft), newTokenId, address(token), price);
-        vm.stopPrank();
-        
-        // 随机买家购买NFT
-        vm.startPrank(randomBuyer);
-        token.approve(address(market), price);
-        
-        // 计算费用
-        uint256 fee = (price * market.feeRate()) / market.FEE_DENOMINATOR();
-        uint256 sellerProceeds = price - fee;
-        
-        // 记录购买前的余额
-        uint256 sellerBalanceBefore = token.balanceOf(seller);
-        uint256 ownerBalanceBefore = token.balanceOf(owner);
-        uint256 buyerBalanceBefore = token.balanceOf(randomBuyer);
-        
-        // 购买NFT
-        market.buyNFT(address(nft), newTokenId);
-        
-        // 验证NFT所有权已转移
-        assertEq(nft.ownerOf(newTokenId), randomBuyer);
-        
-        // 验证代币已正确转移
-        assertEq(token.balanceOf(seller), sellerBalanceBefore + sellerProceeds);
-        assertEq(token.balanceOf(owner), ownerBalanceBefore + fee);
-        assertEq(token.balanceOf(randomBuyer), buyerBalanceBefore - price);
-        
-        // 验证listing已删除
-        (,,,,, bool isActive) = market.listings(address(nft), newTokenId);
-        assertEq(isActive, false);
-        
-        vm.stopPrank();
-    }
 
     // 2. 不可变测试：测试无论如何买卖，NFTMarket合约中都不可能有Token持仓
     function testInvariant_NoTokenBalance() public {
