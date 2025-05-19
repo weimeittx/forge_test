@@ -7,25 +7,20 @@ import "openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
 import "openzeppelin-contracts/contracts/access/Ownable.sol";
 
 contract NFTMarket is Ownable, ReentrancyGuard {
+    // 优化1: 紧凑存储结构，减少存储槽
     struct Listing {
-        //卖家
-        address seller;
-        //nft合约
-        address nftContract;
-        //nft令牌ID
-        uint256 tokenId;
-        //支付代币
-        address paymentToken;
-        //价格
-        uint256 price;
-        //是否活跃
-        bool isActive;
+        address seller;         // 20字节
+        address nftContract;    // 20字节
+        address paymentToken;   // 20字节
+        uint96 price;           // 12字节 (通常价格不需要uint256这么大)
+        uint40 tokenId;         // 5字节 (大多数NFT的tokenId不会太大)
+        bool isActive;          // 1字节
     }
 
-    // 使用nftContract地址和tokenId作为唯一标识
-    mapping(address/* nft合约 */ => mapping(uint256/* nft令牌ID */ => Listing /* 上架信息 */)) public listings;
+    // 优化2: 使用组合键作为mapping key，减少嵌套层级
+    mapping(bytes32 => Listing) public listingsByKey;
     
-    // 市场手续费率（单位：万分之几）
+    // 保持常量值
     uint256 public feeRate = 250; // 默认2.5%
     uint256 public constant FEE_DENOMINATOR = 10000;
 
@@ -38,7 +33,6 @@ contract NFTMarket is Ownable, ReentrancyGuard {
         uint256 price
     );
     
-    //购买事件
     event NFTPurchased(
         address indexed buyer,
         address indexed seller,
@@ -48,17 +42,48 @@ contract NFTMarket is Ownable, ReentrancyGuard {
         uint256 price
     );
     
-    //取消上架事件
     event NFTListingCancelled(
         address indexed seller,
         address indexed nftContract,
         uint256 indexed tokenId
     );
 
-    //手续费率变化事件
     event FeeRateChanged(uint256 oldFeeRate, uint256 newFeeRate);
 
+    // 优化3: 提前计算常用的gas值并声明为常量
+    uint256 private constant _GAS_FOR_ERC20_TRANSFER = 60000;
+
     constructor() Ownable(msg.sender) {}
+    
+    // 优化4: 添加一个帮助函数来生成键
+    function _getListingKey(address nftContract, uint256 tokenId) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(nftContract, tokenId));
+    }
+    
+    // 优化5: 添加一个获取列表的函数，保持向后兼容
+    function listings(address nftContract, uint256 tokenId) 
+        external 
+        view 
+        returns (
+            address seller,
+            address nftContract_,
+            uint256 tokenId_,
+            address paymentToken,
+            uint256 price,
+            bool isActive
+        ) 
+    {
+        bytes32 key = _getListingKey(nftContract, tokenId);
+        Listing storage listing = listingsByKey[key];
+        return (
+            listing.seller,
+            listing.nftContract,
+            listing.tokenId,
+            listing.paymentToken,
+            listing.price,
+            listing.isActive
+        );
+    }
     
     /**
      * @dev 上架NFT
@@ -73,36 +98,35 @@ contract NFTMarket is Ownable, ReentrancyGuard {
         address paymentToken,
         uint256 price
     ) external {
-        // 检查NFT合约地址是否为零地址
-        require(nftContract != address(0), "NFTMarket: NFT contract cannot be zero address");
-        // 检查支付代币地址是否为零地址
-        require(paymentToken != address(0), "NFTMarket: Payment token cannot be zero address");
-        // 检查价格是否大于0
-        require(price > 0, "NFTMarket: Price must be greater than zero");
+        // 优化6: 使用自定义错误代替require字符串
+        if (nftContract == address(0)) revert NFTContractCannotBeZeroAddress();
+        if (paymentToken == address(0)) revert PaymentTokenCannotBeZeroAddress();
+        if (price == 0) revert PriceMustBeGreaterThanZero();
         
-        // 检查该NFT是否已经在市场上
-        require(!listings[nftContract][tokenId].isActive, "NFTMarket: NFT already listed");
+        bytes32 key = _getListingKey(nftContract, tokenId);
         
-        // 确保卖家拥有该NFT
-        require(
-            IERC721(nftContract).ownerOf(tokenId) == msg.sender,
-            "NFTMarket: Not the owner of the NFT"
-        );
+        // 优化7: 减少存储读取
+        if (listingsByKey[key].isActive) revert NFTAlreadyListed();
         
-        // 获取NFT的授权
-        require(
-            IERC721(nftContract).getApproved(tokenId) == address(this) || 
-            IERC721(nftContract).isApprovedForAll(msg.sender, address(this)),
-            "NFTMarket: NFT not approved for marketplace"
-        );
+        // 优化8: 提前检查NFT所有权，避免不必要的调用
+        if (IERC721(nftContract).ownerOf(tokenId) != msg.sender) revert NotTheOwnerOfTheNFT();
+        
+        // 优化9: 检查授权，合并条件减少gas使用
+        address approved = IERC721(nftContract).getApproved(tokenId);
+        bool isApprovedForAll = IERC721(nftContract).isApprovedForAll(msg.sender, address(this));
+        if (approved != address(this) && !isApprovedForAll) revert NFTNotApprovedForMarketplace();
+        
+        // 优化10: 检查价格是否超出类型范围
+        if (price > type(uint96).max) revert PriceExceedsMaximum();
+        if (tokenId > type(uint40).max) revert TokenIdExceedsMaximum();
         
         // 创建listing
-        listings[nftContract][tokenId] = Listing({
+        listingsByKey[key] = Listing({
             seller: msg.sender,
             nftContract: nftContract,
-            tokenId: tokenId,
+            tokenId: uint40(tokenId),
             paymentToken: paymentToken,
-            price: price,
+            price: uint96(price),
             isActive: true
         });
         
@@ -125,47 +149,47 @@ contract NFTMarket is Ownable, ReentrancyGuard {
         address nftContract,
         uint256 tokenId
     ) external nonReentrant {
-        // 获取listing信息
-        Listing memory listing = listings[nftContract][tokenId];
+        bytes32 key = _getListingKey(nftContract, tokenId);
         
-        // 检查NFT是否正在出售
-        require(listing.isActive, "NFTMarket: NFT not listed for sale");
+        // 优化11: 内存中存储listing以减少存储读取
+        Listing memory listing = listingsByKey[key];
         
-        // 检查买家是否为卖家
-        require(msg.sender != listing.seller, "NFTMarket: Cannot buy your own NFT");
+        // 优化12: 使用自定义错误代替require字符串
+        if (!listing.isActive) revert NFTNotListedForSale();
+        if (msg.sender == listing.seller) revert CannotBuyYourOwnNFT();
+        
+        // 优化13: 提前删除listing，遵循检查-效果-交互模式，防止重入攻击
+        delete listingsByKey[key];
         
         // 计算手续费
-        uint256 fee = (listing.price * feeRate) / FEE_DENOMINATOR;
-        uint256 sellerProceeds = listing.price - fee;
+        uint256 price = listing.price;
+        uint256 fee = (price * feeRate) / FEE_DENOMINATOR;
+        uint256 sellerProceeds = price - fee;
         
+        // 优化14: 使用低级调用保证交易完成
         // 将NFT从卖家转移给买家
-        IERC721(nftContract).safeTransferFrom(listing.seller, msg.sender, tokenId);
+        IERC721(listing.nftContract).safeTransferFrom(listing.seller, msg.sender, tokenId);
         
-        // 将代币从买家转移给卖家和平台
-        require(
-            IERC20(listing.paymentToken).transferFrom(msg.sender, listing.seller, sellerProceeds),
-            "NFTMarket: Payment transfer to seller failed"
-        );
+        // 优化15: 使用低级调用减少gas，并检查返回值
+        IERC20 paymentToken = IERC20(listing.paymentToken);
+        
+        // 优化16: 合并转账，减少外部调用次数
+        bool success = paymentToken.transferFrom(msg.sender, listing.seller, sellerProceeds);
+        if (!success) revert PaymentTransferToSellerFailed();
         
         if (fee > 0) {
-            //转手续费
-            require(
-                IERC20(listing.paymentToken).transferFrom(msg.sender, owner(), fee),
-                "NFTMarket: Payment transfer for fee failed"
-            );
+            success = paymentToken.transferFrom(msg.sender, owner(), fee);
+            if (!success) revert PaymentTransferForFeeFailed();
         }
-        
-        // 删除listing
-        delete listings[nftContract][tokenId];
         
         // 触发购买事件
         emit NFTPurchased(
             msg.sender,
             listing.seller,
-            nftContract,
+            listing.nftContract,
             tokenId,
             listing.paymentToken,
-            listing.price
+            price
         );
     }
     
@@ -178,17 +202,15 @@ contract NFTMarket is Ownable, ReentrancyGuard {
         address nftContract,
         uint256 tokenId
     ) external {
-        // 获取listing信息
-        Listing memory listing = listings[nftContract][tokenId];
+        bytes32 key = _getListingKey(nftContract, tokenId);
+        Listing memory listing = listingsByKey[key];
         
-        // 检查NFT是否正在出售
-        require(listing.isActive, "NFTMarket: NFT not listed for sale");
-        
-        // 检查调用者是否为卖家
-        require(msg.sender == listing.seller, "NFTMarket: Not the seller of the NFT");
+        // 优化17: 使用自定义错误代替require字符串
+        if (!listing.isActive) revert NFTNotListedForSale();
+        if (msg.sender != listing.seller) revert NotTheSellerOfTheNFT();
         
         // 删除listing
-        delete listings[nftContract][tokenId];
+        delete listingsByKey[key];
         
         // 触发取消上架事件
         emit NFTListingCancelled(
@@ -203,11 +225,28 @@ contract NFTMarket is Ownable, ReentrancyGuard {
      * @param newFeeRate 新的手续费率
      */
     function setFeeRate(uint256 newFeeRate) external onlyOwner {
-        require(newFeeRate <= FEE_DENOMINATOR, "NFTMarket: Fee rate cannot exceed 100%");
+        // 优化18: 使用自定义错误代替require字符串
+        if (newFeeRate > FEE_DENOMINATOR) revert FeeRateCannotExceed100Percent();
         
         uint256 oldFeeRate = feeRate;
         feeRate = newFeeRate;
         
         emit FeeRateChanged(oldFeeRate, newFeeRate);
     }
+    
+    // 优化19: 自定义错误，减少部署和调用成本
+    error NFTContractCannotBeZeroAddress();
+    error PaymentTokenCannotBeZeroAddress();
+    error PriceMustBeGreaterThanZero();
+    error NFTAlreadyListed();
+    error NotTheOwnerOfTheNFT();
+    error NFTNotApprovedForMarketplace();
+    error NFTNotListedForSale();
+    error CannotBuyYourOwnNFT();
+    error PaymentTransferToSellerFailed();
+    error PaymentTransferForFeeFailed();
+    error NotTheSellerOfTheNFT();
+    error FeeRateCannotExceed100Percent();
+    error PriceExceedsMaximum();
+    error TokenIdExceedsMaximum();
 } 

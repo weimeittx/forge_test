@@ -95,7 +95,7 @@ contract NFTMarketTest is Test {
         // 不授权市场合约操作NFT
         
         // 上架NFT，预期会失败
-        vm.expectRevert("NFTMarket: NFT not approved for marketplace");
+        vm.expectRevert(abi.encodeWithSelector(NFTMarket.NFTNotApprovedForMarketplace.selector));
         market.listNFT(address(nft), tokenId, address(token), listingPrice);
         
         vm.stopPrank();
@@ -106,7 +106,7 @@ contract NFTMarketTest is Test {
         vm.startPrank(buyer);
         
         // 上架NFT，预期会失败
-        vm.expectRevert("NFTMarket: Not the owner of the NFT");
+        vm.expectRevert(abi.encodeWithSelector(NFTMarket.NotTheOwnerOfTheNFT.selector));
         market.listNFT(address(nft), tokenId, address(token), listingPrice);
         
         vm.stopPrank();
@@ -120,7 +120,7 @@ contract NFTMarketTest is Test {
         nft.approve(address(market), tokenId);
         
         // 上架NFT，价格为0，预期会失败
-        vm.expectRevert("NFTMarket: Price must be greater than zero");
+        vm.expectRevert(abi.encodeWithSelector(NFTMarket.PriceMustBeGreaterThanZero.selector));
         market.listNFT(address(nft), tokenId, address(token), 0);
         
         vm.stopPrank();
@@ -137,7 +137,7 @@ contract NFTMarketTest is Test {
         market.listNFT(address(nft), tokenId, address(token), listingPrice);
         
         // 再次上架同一个NFT，预期会失败
-        vm.expectRevert("NFTMarket: NFT already listed");
+        vm.expectRevert(abi.encodeWithSelector(NFTMarket.NFTAlreadyListed.selector));
         market.listNFT(address(nft), tokenId, address(token), listingPrice);
         
         vm.stopPrank();
@@ -196,7 +196,7 @@ contract NFTMarketTest is Test {
         market.listNFT(address(nft), tokenId, address(token), listingPrice);
         
         // 卖家尝试购买自己的NFT
-        vm.expectRevert("NFTMarket: Cannot buy your own NFT");
+        vm.expectRevert(abi.encodeWithSelector(NFTMarket.CannotBuyYourOwnNFT.selector));
         market.buyNFT(address(nft), tokenId);
         
         vm.stopPrank();
@@ -207,7 +207,7 @@ contract NFTMarketTest is Test {
         vm.startPrank(buyer);
         
         // 尝试购买未上架的NFT
-        vm.expectRevert("NFTMarket: NFT not listed for sale");
+        vm.expectRevert(abi.encodeWithSelector(NFTMarket.NFTNotListedForSale.selector));
         market.buyNFT(address(nft), tokenId);
         
         vm.stopPrank();
@@ -269,13 +269,12 @@ contract NFTMarketTest is Test {
         market.buyNFT(address(nft), tokenId);
         
         // 尝试再次购买同一个NFT
-        vm.expectRevert("NFTMarket: NFT not listed for sale");
+        vm.expectRevert(abi.encodeWithSelector(NFTMarket.NFTNotListedForSale.selector));
         market.buyNFT(address(nft), tokenId);
         
         vm.stopPrank();
     }
 
-    // 1. 模糊测试：测试随机使用 0.01-10000 Token价格上架NFT，并随机使用任意Address购买NFT
 
     // 2. 不可变测试：测试无论如何买卖，NFTMarket合约中都不可能有Token持仓
     function testInvariant_NoTokenBalance() public {
