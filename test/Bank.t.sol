@@ -11,6 +11,14 @@ contract BankTest is Test {
     address public user2;
     address public user3;
     address public user4;
+    address public user5;
+    address public user6;
+    address public user7;
+    address public user8;
+    address public user9;
+    address public user10;
+    address public user11;
+    address public user12;
 
     function setUp() public {
         admin = makeAddr("admin");
@@ -18,6 +26,14 @@ contract BankTest is Test {
         user2 = makeAddr("user2");
         user3 = makeAddr("user3");
         user4 = makeAddr("user4");
+        user5 = makeAddr("user5");
+        user6 = makeAddr("user6");
+        user7 = makeAddr("user7");
+        user8 = makeAddr("user8");
+        user9 = makeAddr("user9");
+        user10 = makeAddr("user10");
+        user11 = makeAddr("user11");
+        user12 = makeAddr("user12");
         
         vm.startPrank(admin);
         bank = new Bank();
@@ -96,5 +112,76 @@ contract BankTest is Test {
         assertEq(top3[0], user1, "First place should be user1");
         assertEq(top3[1], user2, "Second place should be user2");
         assertEq(top3[2], user3, "Third place should be user3");
+    }
+    
+    function test_Top10Depositors() public {
+        // 创建12个用户，其中前10个会被记录
+        depositEther(user1, 10 ether);
+        depositEther(user2, 9 ether);
+        depositEther(user3, 8 ether);
+        depositEther(user4, 7 ether);
+        depositEther(user5, 6 ether);
+        depositEther(user6, 5 ether);
+        depositEther(user7, 4 ether);
+        depositEther(user8, 3 ether);
+        depositEther(user9, 2 ether);
+        depositEther(user10, 1 ether);
+        depositEther(user11, 0.5 ether);
+        depositEther(user12, 0.1 ether);
+        
+        // 检查Top10
+        address[] memory top10 = bank.getTop10();
+        
+        // 验证前10名用户
+        assertEq(top10.length, 10, "Should have 10 users in the list");
+        assertEq(top10[0], user1, "First place should be user1");
+        assertEq(top10[1], user2, "Second place should be user2");
+        assertEq(top10[2], user3, "Third place should be user3");
+        assertEq(top10[3], user4, "Fourth place should be user4");
+        assertEq(top10[4], user5, "Fifth place should be user5");
+        assertEq(top10[5], user6, "Sixth place should be user6");
+        assertEq(top10[6], user7, "Seventh place should be user7");
+        assertEq(top10[7], user8, "Eighth place should be user8");
+        assertEq(top10[8], user9, "Ninth place should be user9");
+        assertEq(top10[9], user10, "Tenth place should be user10");
+        
+        // 验证user11不在列表中
+        address[] memory top11 = bank.getTopUsers(11);
+        assertEq(top11.length, 10, "Should only return 10 users even when asking for 11");
+    }
+    
+    function test_UpdateTopList() public {
+        // 初始存款
+        depositEther(user1, 1 ether);
+        depositEther(user2, 2 ether);
+        depositEther(user3, 3 ether);
+        
+        // 检查初始排名
+        address[] memory initialTop = bank.getTopUsers(3);
+        assertEq(initialTop[0], user3, "First place should be user3");
+        assertEq(initialTop[1], user2, "Second place should be user2");
+        assertEq(initialTop[2], user1, "Third place should be user1");
+        
+        // 用户1增加存款，应该变成第一名
+        vm.startPrank(user1);
+        vm.deal(user1, 5 ether); // 这里是设置余额，不是增加
+        (bool success,) = address(bank).call{value: 4 ether}("");
+        require(success, "Deposit failed");
+        vm.stopPrank();
+        
+        // 检查更新后的排名
+        address[] memory updatedTop = bank.getTopUsers(3);
+        assertEq(updatedTop[0], user1, "First place should now be user1");
+        assertEq(updatedTop[1], user3, "Second place should now be user3");
+        assertEq(updatedTop[2], user2, "Third place should now be user2");
+    }
+    
+    // 辅助函数，为用户存入以太币
+    function depositEther(address user, uint256 amount) internal {
+        vm.startPrank(user);
+        vm.deal(user, amount + 1 ether); // 确保用户有足够的ETH
+        (bool success,) = address(bank).call{value: amount}("");
+        require(success, "Deposit failed");
+        vm.stopPrank();
     }
 }
