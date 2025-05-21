@@ -2,16 +2,13 @@
 pragma solidity ^0.8.13;
 
 import {Script, console} from "forge-std/Script.sol";
-import {NFTMarket} from "../src/NFTMarket.sol";
 import {MockNFT} from "../src/MockNft.sol";
-import {MockToken} from "../src/MockToken.sol";
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-contract BankScript is Script {
-    NFTMarket public market;
+contract MockNFTScript is Script {
     MockNFT public nft;
-    MockToken public token;
     MockNFT public nftProxy;
+
     function setUp() public {}
 
     function run() public {
@@ -19,34 +16,31 @@ contract BankScript is Script {
         address deployer = vm.envAddress("DEPLOYER");
         vm.startBroadcast(deployerPrivateKey);
 
-        market = new NFTMarket();
-        console.log("NFTMarket deployed at:", address(market));
-
-        // 部署MockNFT
+        // Deploy MockNFT implementation contract
         nft = new MockNFT();
-        console.log("MockNFT deployed at:", address(nft));
+        console.log("MockNFT implementation deployed at:", address(nft));
 
+        // Set initial owner as the deployer
         address initialOwner = deployer;
+        console.log("Initial owner address:", initialOwner);
+
+        // Prepare initialization data
         bytes memory initData = abi.encodeWithSelector(
             MockNFT.initialize.selector,
             initialOwner
         );
 
+        // Deploy proxy contract and initialize
         ERC1967Proxy proxy = new ERC1967Proxy(address(nft), initData);
-        console.log("MockNFT Proxy deployed at:", address(proxy));
-
+        console.log("MockNFT proxy deployed at:", address(proxy));
+        
+        // Access NFT instance through proxy
         nftProxy = MockNFT(address(proxy));
-        nftProxy.mint(deployer, 1);
-
-        // 部署MockToken
-        token = new MockToken();
-        console.log("MockToken deployed at:", address(token));
-        token.mint(deployer, 10000 * 10 ** 18);
-
-        token.approve(address(market), 10000 * 10 ** 18);
-        nftProxy.setApprovalForAll(address(market), true);
-        market.listNFT(address(nftProxy), 1, address(token), 100 * 10 ** 18);
+        nftProxy.mint(deployer, 2);
+        console.log("NFT name:", nftProxy.name());
+        console.log("NFT symbol:", nftProxy.symbol());
+        console.log("NFT owner:", nftProxy.owner());
 
         vm.stopBroadcast();
     }
-}
+} 
