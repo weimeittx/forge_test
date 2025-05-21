@@ -199,3 +199,68 @@ forge script script/TokenBank.s.sol:TokenBankScript --rpc-url http://127.0.0.1:8
 forge create --rpc-url http://127.0.0.1:8545 --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 src/MockToken.sol:MockToken --broadcast
 
 forge create --rpc-url http://127.0.0.1:8545 --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 src/esRNT.sol:esRNT --broadcast
+
+# 可升级合约示例
+
+这个项目展示了如何使用OpenZeppelin的可升级合约模式（UUPS代理模式）创建可升级的智能合约。
+
+## 合约结构
+
+- `UpgradeableBox.sol`: 初始版本的可升级合约，具有基本的存储和检索功能
+- `UpgradeableBoxV2.sol`: 升级版本，增加了名称设置和值增加功能
+
+## 测试
+
+运行以下命令测试合约的功能和升级过程：
+
+```bash
+forge test -vvv
+```
+
+测试案例包括：
+- 初始值设置和读取
+- 存储功能测试
+- 合约升级过程
+- 新增功能测试
+- 未授权升级尝试
+
+## 部署
+
+### 部署初始版本
+
+1. 设置环境变量：
+
+```bash
+export PRIVATE_KEY=你的私钥
+```
+
+2. 运行部署脚本：
+
+```bash
+forge script script/DeployUpgradeableBox.s.sol:DeployUpgradeableBox --rpc-url <你的RPC_URL> --broadcast
+```
+
+3. 记录输出中的代理地址，用于后续升级
+
+### 升级到V2版本
+
+1. 设置环境变量：
+
+```bash
+export PRIVATE_KEY=你的私钥
+export PROXY_ADDRESS=之前部署的代理地址
+```
+
+2. 运行升级脚本：
+
+```bash
+forge script script/UpgradeToV2.s.sol:UpgradeToV2 --rpc-url <你的RPC_URL> --broadcast
+```
+
+## 可升级合约的关键点
+
+1. **代理模式**：使用了UUPS (Universal Upgradeable Proxy Standard) 代理模式
+2. **状态分离**：逻辑和状态分离，使得可以升级逻辑而保留状态
+3. **初始化函数**：使用`initialize`替代构造函数
+4. **不可变量注意事项**：升级时需要保持存储布局兼容
+5. **访问控制**：只有合约所有者可以升级合约
