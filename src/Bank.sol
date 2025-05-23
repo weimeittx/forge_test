@@ -51,6 +51,18 @@ contract Bank {
         _;
     }
 
+    function deposit() external payable effectiveBalance {
+        // 更新余额
+        if (balances[msg.sender] == 0) {
+            depositors.push(msg.sender);
+        }
+        balances[msg.sender] += msg.value;
+
+        // 更新前 10 名用户列表
+        _updateTopUsers(msg.sender);
+        
+    }
+
     function withdraw() external {
         require(msg.sender == admin, "Only admin can withdraw");
 
@@ -235,8 +247,4 @@ contract Bank {
         
         return result;
     }
-}
-
-contract Admin {
-    
 }

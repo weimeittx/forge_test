@@ -50,8 +50,111 @@ contract BankTest is Test {
         assertEq(bank.balanceOf(user1), 1 ether);
         vm.stopPrank();
     }
+    
+    function test_DepositMethod() public {
+        // 使用deposit方法而不是receive
+        vm.startPrank(user1);
+        vm.deal(user1, 2 ether);
+        
+        assertEq(bank.balanceOf(user1), 0 ether);
+        
+        // 调用deposit方法
+        bank.deposit{value: 1 ether}();
+        
+        // 验证余额更新
+        assertEq(bank.balanceOf(user1), 1 ether);
+        
+        // 验证用户在排名中
+        address[] memory topUsers = bank.getTopUsers(1);
+        assertEq(topUsers[0], user1, "User1 should be in top list");
+        
+        vm.stopPrank();
+    }
+    
+    function test_DepositMethodMinimumAmount() public {
+        // 测试最小存款额度限制
+        vm.startPrank(user1);
+        vm.deal(user1, 1 ether);
+        
+        // 尝试存入少于最小限额的金额，应该失败
+        vm.expectRevert();
+        bank.deposit{value: 0.0009 ether}();
+        
+        // 验证余额未变化
+        assertEq(bank.balanceOf(user1), 0 ether);
+        
+        // 存入有效金额
+        bank.deposit{value: 0.002 ether}();
+        
+        // 验证余额更新
+        assertEq(bank.balanceOf(user1), 0.002 ether);
+        
+        vm.stopPrank();
+    }
+    
+    function test_DepositMethodMultipleTimes() public {
+        // 测试多次存款
+        vm.startPrank(user1);
+        vm.deal(user1, 3 ether);
+        
+        // 第一次存款
+        bank.deposit{value: 1 ether}();
+        assertEq(bank.balanceOf(user1), 1 ether);
+        
+        // 第二次存款
+        bank.deposit{value: 0.5 ether}();
+        assertEq(bank.balanceOf(user1), 1.5 ether);
+        
+        // 第三次存款
+        bank.deposit{value: 0.3 ether}();
+        assertEq(bank.balanceOf(user1), 1.8 ether);
+        
+        vm.stopPrank();
+        
+        // 检查排名
+        address[] memory topUsers = bank.getTopUsers(1);
+        assertEq(topUsers[0], user1, "User1 should still be top after multiple deposits");
+    }
+    
+    function test_DepositMethodRanking() public {
+        // 测试多个用户使用deposit方法时的排名
+        // 用户1存款
+        vm.startPrank(user1);
+        vm.deal(user1, 2 ether);
+        bank.deposit{value: 1 ether}();
+        vm.stopPrank();
+        
+        // 用户2存入更多
+        vm.startPrank(user2);
+        vm.deal(user2, 3 ether);
+        bank.deposit{value: 2 ether}();
+        vm.stopPrank();
+        
+        // 用户3存入更少
+        vm.startPrank(user3);
+        vm.deal(user3, 1 ether);
+        bank.deposit{value: 0.5 ether}();
+        vm.stopPrank();
+        
+        // 检查排名
+        address[] memory topUsers = bank.getTopUsers(3);
+        assertEq(topUsers[0], user2, "User2 should be first");
+        assertEq(topUsers[1], user1, "User1 should be second");
+        assertEq(topUsers[2], user3, "User3 should be third");
+        
+        // 用户1再次存款超过用户2
+        vm.startPrank(user1);
+        vm.deal(user1, 2 ether); // 已有1，再加2，总共3
+        bank.deposit{value: 2 ether}();
+        vm.stopPrank();
+        
+        // 再次检查排名
+        address[] memory updatedTopUsers = bank.getTopUsers(3);
+        assertEq(updatedTopUsers[0], user1, "User1 should now be first");
+        assertEq(updatedTopUsers[1], user2, "User2 should now be second");
+        assertEq(updatedTopUsers[2], user3, "User3 should still be third");
+    }
 
-  
     function test_Withdraw() public {
         // 先存入一些资金
         vm.startPrank(user1);
