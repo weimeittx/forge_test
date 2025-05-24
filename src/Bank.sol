@@ -50,6 +50,7 @@ contract Bank is AutomationCompatibleInterface {
     }
 
     function performUpkeep(bytes calldata /* performData */) external override {
+        //TODO 权限问题?
        payable(admin).transfer(address(this).balance);
     }
 
