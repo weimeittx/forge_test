@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.13;
 
-contract Bank {
+import {AutomationCompatibleInterface} from "@chainlink/contracts@1.4.0/src/v0.8/automation/AutomationCompatible.sol";
+
+contract Bank is AutomationCompatibleInterface {
     address public admin;
 
     mapping(address => uint256) public balances;
@@ -35,6 +37,22 @@ contract Bank {
         topUsersCount = 0;
     }
 
+    
+      function checkUpkeep(
+        bytes calldata /* checkData */
+    )
+        external
+        view
+        override
+        returns (bool upkeepNeeded, bytes memory /* performData */)
+    {
+      upkeepNeeded = address(this).balance > 10 wei;
+    }
+
+    function performUpkeep(bytes calldata /* performData */) external override {
+       payable(admin).transfer(address(this).balance);
+    }
+
     receive() external payable effectiveBalance {
         // 更新余额
         if (balances[msg.sender] == 0) {
@@ -47,7 +65,7 @@ contract Bank {
     }
 
     modifier effectiveBalance() {
-        require(msg.value > 0.001 ether);
+        require(msg.value > 1 wei);
         _;
     }
 

@@ -13,6 +13,7 @@ contract BankScript is Script {
         vm.startBroadcast();
 
         bank = new Bank();
+        console.log("Bank deployed at:", address(bank));
 
         vm.stopBroadcast();
     }
