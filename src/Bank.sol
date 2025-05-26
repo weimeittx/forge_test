@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.13;
 
-import {AutomationCompatibleInterface} from "@chainlink/contracts@1.4.0/src/v0.8/automation/AutomationCompatible.sol";
+// import {AutomationCompatibleInterface} from "@chainlink/contracts@1.4.0/src/v0.8/automation/AutomationCompatible.sol";
 
-contract Bank is AutomationCompatibleInterface {
+contract Bank/*  is AutomationCompatibleInterface */ {
     address public admin;
 
     mapping(address => uint256) public balances;
@@ -43,13 +43,13 @@ contract Bank is AutomationCompatibleInterface {
     )
         external
         view
-        override
+        /* override */
         returns (bool upkeepNeeded, bytes memory /* performData */)
     {
       upkeepNeeded = address(this).balance > 10 wei;
     }
 
-    function performUpkeep(bytes calldata /* performData */) external override {
+    function performUpkeep(bytes calldata /* performData */) external /* override */ {
         //TODO 权限问题?
        payable(admin).transfer(address(this).balance);
     }
