@@ -39,10 +39,17 @@ contract MockUniswapV2Router {
     ) external payable returns (uint256[] memory amounts) {
         amounts = new uint256[](2);
         amounts[0] = msg.value;
-        amounts[1] = msg.value * 2; // Mock: 1 ETH = 2 tokens
+        // 基于0.005 ETH per token的价格计算
+        amounts[1] = (msg.value * 10**18) / (0.005 ether); // 1 ETH = 200 tokens
         
         // Mock transfer tokens to buyer
-        // In real implementation, this would transfer actual tokens
+        // 在真实实现中，这里会从pair合约转移代币到买家
+        // 这里我们模拟转移，实际上需要调用token的transfer函数
+        if (path.length >= 2) {
+            // 模拟从token合约转移代币给买家
+            // 注意：这只是测试用的mock，真实环境中Uniswap会处理实际的代币转移
+        }
+        
         return amounts;
     }
 }
@@ -67,8 +74,14 @@ contract MockUniswapV2Pair {
     uint256 private reserve1 = 500 ether;
     
     constructor(address _token0, address _token1) {
-        token0 = _token0;
-        token1 = _token1;
+        // 确保WETH总是token0（按照Uniswap的惯例，地址较小的是token0）
+        if (_token0 < _token1) {
+            token0 = _token0;
+            token1 = _token1;
+        } else {
+            token0 = _token1;
+            token1 = _token0;
+        }
     }
     
     function getReserves() external view returns (uint256 _reserve0, uint256 _reserve1, uint32 _blockTimestampLast) {
@@ -305,7 +318,15 @@ contract MemeLaunchTest is Test {
         
         // 模拟Uniswap价格更优（通过设置mock pair的储备）
         MockUniswapV2Pair pair = MockUniswapV2Pair(token.uniswapPair());
-        pair.setReserves(1000 ether, 2000 ether); // 设置更优的价格
+        // 设置储备使得Uniswap价格更优
+        // mint价格是0.01 ETH，我们设置Uniswap价格为0.005 ETH（更便宜）
+        // 如果WETH是token0: reserve0 = ETH储备, reserve1 = Token储备
+        // 价格 = ETH储备 / Token储备 = 0.005，所以 ETH储备 = 0.005 * Token储备
+        if (pair.token0() == address(0x1234)) { // WETH是token0
+            pair.setReserves(5 ether, 1000 ether); // 5 ETH : 1000 Token = 0.005 ETH per token
+        } else { // Token是token0
+            pair.setReserves(1000 ether, 5 ether); // 1000 Token : 5 ETH = 0.005 ETH per token
+        }
         
         // 记录购买前的代币余额
         uint256 balanceBefore = token.balanceOf(buyer2);
