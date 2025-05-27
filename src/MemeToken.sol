@@ -6,6 +6,7 @@ import "openzeppelin-contracts/contracts/access/Ownable.sol";
 import "v2-periphery/interfaces/IUniswapV2Router02.sol";
 import "v2-core/interfaces/IUniswapV2Factory.sol";
 import "v2-core/interfaces/IUniswapV2Pair.sol";
+import "./MemeTWAP.sol";
 
 /**
  * @title MemeToken
@@ -25,9 +26,15 @@ contract MemeToken is ERC20, Ownable {
     address public uniswapPair;
     bool public liquidityAdded;
     
+    // TWAP 相关
+    using MemeTWAP for MemeTWAP.TWAPData;
+    MemeTWAP.TWAPData private twapData;
+    bool public twapEnabled;
+    
     // 事件
     event LiquidityAdded(uint256 tokenAmount, uint256 ethAmount, uint256 liquidity);
     event TokensBought(address indexed buyer, uint256 tokenAmount, uint256 ethAmount);
+    event TWAPUpdated(uint256 price, uint256 timestamp);
     
     // 构造函数，设置一个默认名称和符号
     constructor() ERC20("Meme Token Template", "TEMPLATE") Ownable(msg.sender) {}
@@ -68,6 +75,10 @@ contract MemeToken is ERC20, Ownable {
         // 创建交易对
         IUniswapV2Factory factory = IUniswapV2Factory(uniswapRouter.factory());
         uniswapPair = factory.createPair(address(this), uniswapRouter.WETH());
+        
+        // 初始化 TWAP
+        twapData.initialize();
+        twapEnabled = true;
     }
     
     // 铸造函数，由工厂合约调用
@@ -91,6 +102,9 @@ contract MemeToken is ERC20, Ownable {
         if (!liquidityAdded && liquidityFee > 0) {
             _addInitialLiquidity(liquidityFee);
         }
+        
+        // 更新 TWAP 价格
+        _updateTWAP();
     }
     
     /**
@@ -144,6 +158,9 @@ contract MemeToken is ERC20, Ownable {
         );
         
         emit TokensBought(msg.sender, amounts[1], msg.value);
+        
+        // 更新 TWAP 价格
+        _updateTWAP();
     }
     
     /**
@@ -192,5 +209,86 @@ contract MemeToken is ERC20, Ownable {
     function symbol() public view override returns (string memory) {
         // 如果是模板合约本身，返回基本符号；如果是代理合约，返回自定义符号
         return bytes(memeSymbol).length > 0 ? memeSymbol : super.symbol();
+    }
+    
+    // ============ TWAP 相关函数 ============
+    
+    /**
+     * @dev 内部函数：更新 TWAP 价格
+     */
+    function _updateTWAP() internal {
+        if (!twapEnabled) return;
+        
+        uint256 currentPrice = getCurrentPrice();
+        twapData.addObservation(currentPrice);
+        
+        emit TWAPUpdated(currentPrice, block.timestamp);
+    }
+    
+    /**
+     * @dev 手动更新 TWAP 价格（任何人都可以调用）
+     */
+    function updateTWAP() external {
+        require(twapEnabled, "TWAP not enabled");
+        _updateTWAP();
+    }
+    
+    /**
+     * @dev 获取指定时间段的 TWAP 价格
+     * @param period 时间段（秒），最小 300 秒（5分钟）
+     * @return TWAP 价格
+     */
+    function getTWAP(uint256 period) external view returns (uint256) {
+        require(twapEnabled, "TWAP not enabled");
+        return twapData.getTWAP(period);
+    }
+    
+    /**
+     * @dev 获取 5 分钟 TWAP
+     */
+    function getTWAP5min() external view returns (uint256) {
+        require(twapEnabled, "TWAP not enabled");
+        return twapData.getTWAP(300); // 5 分钟
+    }
+    
+    /**
+     * @dev 获取 15 分钟 TWAP
+     */
+    function getTWAP15min() external view returns (uint256) {
+        require(twapEnabled, "TWAP not enabled");
+        return twapData.getTWAP(900); // 15 分钟
+    }
+    
+    /**
+     * @dev 获取 1 小时 TWAP
+     */
+    function getTWAP1hour() external view returns (uint256) {
+        require(twapEnabled, "TWAP not enabled");
+        return twapData.getTWAP(3600); // 1 小时
+    }
+    
+    /**
+     * @dev 获取最新的 TWAP 价格观察
+     */
+    function getLatestTWAPPrice() external view returns (uint256) {
+        require(twapEnabled, "TWAP not enabled");
+        return twapData.getLatestPrice();
+    }
+    
+    /**
+     * @dev 获取 TWAP 观察数量
+     */
+    function getTWAPObservationCount() external view returns (uint256) {
+        return twapData.getObservationCount();
+    }
+    
+    /**
+     * @dev 启用/禁用 TWAP（仅所有者）
+     */
+    function setTWAPEnabled(bool enabled) external onlyOwner {
+        twapEnabled = enabled;
+        if (enabled && !twapData.initialized) {
+            twapData.initialize();
+        }
     }
 } 
